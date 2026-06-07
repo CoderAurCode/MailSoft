@@ -1,10 +1,8 @@
-
 // ============================================================
 const EMAILJS_PUBLIC_KEY  = "IEkHLZHrYCWc4pf7C";   
 const EMAILJS_SERVICE_ID  = "service_3kwnvvo";  
 const EMAILJS_TEMPLATE_ID = "template_zttupwj";  
 
-// Auto-detects if EmailJS is properly configured
 function isEmailJSConfigured() {
   return EMAILJS_PUBLIC_KEY  !== "IEkHLZHrYCWc4pf7C"  &&
          EMAILJS_SERVICE_ID  !== "service_3kwnvvo"  &&
@@ -21,7 +19,6 @@ const DEFAULT_EMAILS = [
 
 let emails = { inbox: [], sent: [], drafts: [], trash: [] };
 
-// State
 let currentFolder   = "inbox";
 let currentEmailId  = null;  
 let composeMode     = "new"; 
@@ -31,9 +28,8 @@ let notifications   = [];
 let searchTimeout   = null;
 let globalSearchActive = false;
 
-// Attachment limits
-const MAX_FILE_SIZE  = 5  * 1024 * 1024;  // 5 MB
-const MAX_TOTAL_SIZE = 25 * 1024 * 1024;  // 25 MB
+const MAX_FILE_SIZE  = 5  * 1024 * 1024;
+const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
 
 // ============================================================
 //  PERSISTENCE
@@ -65,16 +61,34 @@ function loadFromStorage() {
 }
 
 // ============================================================
+//  MOBILE SIDEBAR
+// ============================================================
+function toggleSidebar() {
+  const sidebar  = document.getElementById("sidebar");
+  const overlay  = document.getElementById("sidebarOverlay");
+  const isOpen   = sidebar.classList.contains("open");
+  if (isOpen) {
+    closeSidebar();
+  } else {
+    sidebar.classList.add("open");
+    overlay.classList.add("active");
+    document.body.style.overflow = "hidden";
+  }
+}
+
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarOverlay").classList.remove("active");
+  document.body.style.overflow = "";
+}
+
+// ============================================================
 //  INIT
 // ============================================================
 window.onload = function () {
   loadFromStorage();
-  // Initialize EmailJS if configured
   if (isEmailJSConfigured()) {
     emailjs.init(EMAILJS_PUBLIC_KEY);
-    console.log("✅ EmailJS initialized — real email sending is ACTIVE");
-  } else {
-    console.warn("⚠️ EmailJS not configured — running in simulation mode. Fill EMAILJS_PUBLIC_KEY, SERVICE_ID, TEMPLATE_ID in script.js");
   }
   loadTheme();
   renderFolder("inbox");
@@ -87,41 +101,48 @@ window.onload = function () {
   // Outside-click: close panels
   document.addEventListener("click", function (e) {
     const inCompose  = e.target.closest("#composePopup");
-    const opensComp  = e.target.closest(".compose-btn") || e.target.closest("[onclick*='openCompose']") || e.target.closest("[onclick*='replyEmail']") || e.target.closest("[onclick*='forwardEmail']");
+    const opensComp  = e.target.closest(".compose-btn") || e.target.closest("[onclick*='openCompose']") || e.target.closest("[onclick*='replyEmail']") || e.target.closest("[onclick*='forwardEmail']") || e.target.closest(".mobile-fab");
     if (!inCompose && !opensComp) closeCompose();
 
-    if (!e.target.closest("#notifPanel")  && !e.target.closest("#notifBell"))
+    if (!e.target.closest("#notifPanel") && !e.target.closest("#notifBell") && !e.target.closest("#notifBellMobile"))
       document.getElementById("notifPanel").classList.remove("open");
     if (!e.target.closest("#profileMenu") && !e.target.closest(".profile"))
       document.getElementById("profileMenu").classList.remove("open");
   });
 
-  // Char counter (live)
+  // Char counter
   document.getElementById("popupMessage").addEventListener("input", function () {
     document.getElementById("charCount").textContent = this.innerText.length;
   });
 
+  // Sync mobile search input with desktop search
+  const mobileSearch = document.getElementById("searchInputMobile");
+  if (mobileSearch) {
+    mobileSearch.addEventListener("input", function () {
+      document.getElementById("searchInput").value = this.value;
+      searchMail();
+    });
+  }
+
   // Keyboard shortcuts
   document.addEventListener("keydown", function (e) {
-    // ESC — close anything open
     if (e.key === "Escape") {
       closeCompose();
+      closeSidebar();
       document.getElementById("notifPanel").classList.remove("open");
       document.getElementById("profileMenu").classList.remove("open");
       document.querySelectorAll(".info-modal").forEach(m => m.remove());
     }
-    // Ctrl/Cmd + Enter — send email
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       if (document.getElementById("composePopup").classList.contains("open"))
         sendMailFromPopup();
     }
-    // N — new compose (when not typing)
     if (e.key === "n" && !e.target.matches("input,textarea,[contenteditable]")) {
       openCompose();
     }
   });
 
-  // Auto-save draft every 30s while compose is open
+  // Auto-save draft every 30s
   setInterval(function () {
     if (document.getElementById("composePopup").classList.contains("open")) {
       const body = document.getElementById("popupMessage").innerText.trim();
@@ -136,11 +157,13 @@ window.onload = function () {
 function switchFolder(folder) {
   currentFolder = folder;
 
-  // Exit global search if switching folders
   if (globalSearchActive) {
     globalSearchActive = false;
     document.getElementById("searchInput").value = "";
-    document.getElementById("globalSearchBanner") && document.getElementById("globalSearchBanner").remove();
+    const mob = document.getElementById("searchInputMobile");
+    if (mob) mob.value = "";
+    const banner = document.getElementById("globalSearchBanner");
+    if (banner) banner.remove();
   }
 
   closeDetail();
@@ -152,12 +175,10 @@ function switchFolder(folder) {
   const labels = { inbox:"Inbox",    sent:"Sent",           drafts:"Drafts",       starred:"Starred", trash:"Trash"   };
   document.getElementById("folderTitle").innerHTML = `<i class="fa ${icons[folder]}"></i> ${labels[folder]}`;
 
-  // Hero + info only on inbox
   const isInbox = folder === "inbox";
   document.getElementById("heroSection").style.display  = isInbox ? "flex"  : "none";
   document.getElementById("infoSection").style.display  = isInbox ? "block" : "none";
 
-  // Empty-trash button
   const et = document.getElementById("emptyTrashBtn");
   if (et) et.style.display = folder === "trash" ? "inline-flex" : "none";
 
@@ -188,7 +209,7 @@ function renderFolder(folder) {
     card.dataset.id = email.id;
 
     const attachIcon = email.attachments && email.attachments.length
-      ? `<i class="fa fa-paperclip att-icon" title="${email.attachments.length} attachment(s)"></i>`
+      ? `<i class="fa fa-paperclip att-icon" title="${email.attachments.length} attachment(s)" style="color:var(--text-muted);font-size:13px"></i>`
       : "";
 
     const trashIcon = folder === "trash"
@@ -237,7 +258,6 @@ function openEmail(id, folder) {
   const email = findEmail(id, folder);
   if (!email) return;
 
-  // Clicking a draft → open compose to edit
   if (folder === "drafts") {
     openDraftForEdit(email);
     return;
@@ -248,13 +268,11 @@ function openEmail(id, folder) {
   updateCounts();
   saveToStorage();
 
-  // Hide list, show detail
   document.getElementById("mailList").style.display = "none";
   document.getElementById("folderTitle").parentElement.style.display = "none";
   document.getElementById("emptyState").style.display = "none";
   document.getElementById("emailDetail").style.display = "block";
 
-  // Populate detail
   document.getElementById("detailSubject").textContent = email.subject;
   let senderHtml = `<i class="fa fa-user-circle"></i> <strong>${escHtml(email.sender)}</strong> &lt;${escHtml(email.email)}&gt;`;
   if (email.cc) senderHtml += `&nbsp;&nbsp;<span style="color:var(--text-muted);font-size:12px">CC: ${escHtml(email.cc)}</span>`;
@@ -262,11 +280,9 @@ function openEmail(id, folder) {
   document.getElementById("detailTime").textContent = email.time;
   document.getElementById("detailBody").innerHTML = escHtml(email.body).replace(/\n/g, "<br>");
 
-  // Restore button — only in trash
   const rb = document.getElementById("restoreBtn");
   if (rb) rb.style.display = folder === "trash" ? "inline-flex" : "none";
 
-  // Attachments in detail view
   if (email.attachments && email.attachments.length) {
     let html = `<div class="detail-attachments"><div class="att-label"><i class="fa fa-paperclip"></i> Attachments (${email.attachments.length})</div>`;
     email.attachments.forEach(att => {
@@ -279,6 +295,8 @@ function openEmail(id, folder) {
   }
 
   renderFolder(folder);
+  // Scroll to top on mobile
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function closeDetail() {
@@ -378,7 +396,6 @@ function toggleStar(e, id, folder) {
 function moveToTrash(e, id, folder) {
   if (e) e.stopPropagation();
 
-  // Find actual source folder for starred view
   let src = folder;
   if (folder === "starred") {
     src = emails.inbox.find(em => em.id === id) ? "inbox"
@@ -397,7 +414,7 @@ function moveToTrash(e, id, folder) {
     const [removed] = emails[src].splice(idx, 1);
     removed.originalFolder = src;
     emails.trash.push(removed);
-    showToast("🗑️ Moved to Trash — Restore from Trash");
+    showToast("🗑️ Moved to Trash");
     addNotif(`🗑️ Moved "${removed.subject}" to Trash`);
   }
   updateCounts();
@@ -439,15 +456,24 @@ function deleteSelected() {
 }
 
 // ============================================================
-//  GLOBAL SEARCH (across ALL folders)
+//  GLOBAL SEARCH
 // ============================================================
 function searchMail() {
   const q = document.getElementById("searchInput").value.toLowerCase().trim();
+  _doSearch(q);
+}
 
+function searchMailMobile() {
+  const q = document.getElementById("searchInputMobile").value.toLowerCase().trim();
+  document.getElementById("searchInput").value = document.getElementById("searchInputMobile").value;
+  _doSearch(q);
+}
+
+function _doSearch(q) {
   if (!q) {
-    // Restore current folder view
     globalSearchActive = false;
-    document.getElementById("globalSearchBanner") && document.getElementById("globalSearchBanner").remove();
+    const banner = document.getElementById("globalSearchBanner");
+    if (banner) banner.remove();
     renderFolder(currentFolder);
     document.getElementById("emptyState").style.display = "none";
     return;
@@ -455,7 +481,6 @@ function searchMail() {
 
   globalSearchActive = true;
 
-  // Search ALL folders
   const allEmails = [
     ...emails.inbox.map(e  => ({...e, _srcFolder: "inbox"})),
     ...emails.sent.map(e   => ({...e, _srcFolder: "sent"})),
@@ -470,12 +495,10 @@ function searchMail() {
     e.email.toLowerCase().includes(q)
   );
 
-  // Render results
   const list  = document.getElementById("mailList");
   const empty = document.getElementById("emptyState");
   list.innerHTML = "";
 
-  // Banner showing search scope
   let banner = document.getElementById("globalSearchBanner");
   if (!banner) {
     banner = document.createElement("div");
@@ -518,7 +541,6 @@ function searchMail() {
   });
 }
 
-// Highlight matched keyword in text
 function highlight(text, q) {
   const safe = escHtml(text);
   const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
@@ -568,7 +590,6 @@ function sendMailFromPopup() {
   const subject = document.getElementById("popupSubject").value.trim();
   const body    = document.getElementById("popupMessage").innerText.trim();
 
-  // Validation
   if (!to)      { showToast("⚠️ 'To' field is required", "var(--danger)"); document.getElementById("popupTo").focus(); return; }
   if (!subject) { showToast("⚠️ Subject is required", "var(--danger)"); document.getElementById("popupSubject").focus(); return; }
   if (!body)    { showToast("⚠️ Message cannot be empty", "var(--danger)"); document.getElementById("popupMessage").focus(); return; }
@@ -577,7 +598,6 @@ function sendMailFromPopup() {
   if (!emailRe.test(to)) { showToast("⚠️ Enter a valid 'To' email address", "var(--danger)"); document.getElementById("popupTo").focus(); return; }
   if (cc && !emailRe.test(cc)) { showToast("⚠️ Enter a valid CC email address", "var(--danger)"); document.getElementById("popupCc").focus(); return; }
 
-  // Save to local sent folder regardless of EmailJS
   const sent = {
     id: Date.now(),
     sender: "Arpna (You)",
@@ -590,7 +610,6 @@ function sendMailFromPopup() {
   };
   emails.sent.unshift(sent);
 
-  // Remove draft if editing one
   if (composeMode === "draft" && composingDraftId) {
     emails.drafts = emails.drafts.filter(d => d.id !== composingDraftId);
     composingDraftId = null;
@@ -600,52 +619,39 @@ function sendMailFromPopup() {
   updateCounts();
   saveToStorage();
 
-  // ---- EMAILJS REAL SENDING ----
   if (isEmailJSConfigured()) {
-    // Disable send button to prevent double send
     const sendBtn = document.querySelector(".btn-send");
     if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Sending...'; }
 
     emailjs.init(EMAILJS_PUBLIC_KEY);
-
     const templateParams = {
-      to_email:  to,
-      cc_email:  cc || "",
-      subject:   subject,
-      message:   body,
-      from_name: "Arpna via MailSoft",
-      reply_to:  "arpna@mailsoft.com"
+      to_email:  to, cc_email: cc || "", subject, message: body,
+      from_name: "Arpna via MailSoft", reply_to: "arpna@mailsoft.com"
     };
 
     emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
       .then(function (response) {
         closeCompose();
         addNotif("📤 Real email sent to " + to);
-        showToast("✅ Email ACTUALLY sent to " + to + "! Check their inbox.");
-        console.log("EmailJS success:", response.status, response.text);
+        showToast("✅ Email sent to " + to + "!");
         if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i> Send'; }
       })
       .catch(function (error) {
-        // Still saved locally, just real sending failed
         closeCompose();
         addNotif("⚠️ EmailJS error — saved to Sent locally");
         showToast("⚠️ Real send failed: " + (error.text || error), "var(--danger)");
-        console.error("EmailJS error:", error);
         if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fa fa-paper-plane"></i> Send'; }
       });
   } else {
-    // EmailJS not configured — simulate mode
     closeCompose();
     addNotif("📤 Email saved to Sent (simulation mode)");
-    showToast("✅ Saved to Sent! (Configure EmailJS for real sending)");
+    showToast("✅ Saved to Sent!");
   }
 }
 
 // ============================================================
 //  DRAFTS
 // ============================================================
-let autoSaveDraftTimer = null;
-
 function saveDraft() {
   _persistDraft();
   closeCompose();
@@ -663,7 +669,6 @@ function _persistDraft(silent) {
   const body    = document.getElementById("popupMessage").innerText.trim() || "(Empty draft)";
 
   if (composeMode === "draft" && composingDraftId) {
-    // Update existing draft
     const idx = emails.drafts.findIndex(d => d.id === composingDraftId);
     if (idx > -1) {
       Object.assign(emails.drafts[idx], { email: to || "—", cc, subject, body, attachments: composingAttachments.slice(), time: now() });
@@ -673,7 +678,6 @@ function _persistDraft(silent) {
     }
   }
 
-  // New draft
   const draft = {
     id: Date.now(),
     sender: "Arpna (Draft)", email: to || "—", cc, subject, body,
@@ -759,9 +763,14 @@ function updateCounts() {
   dc.textContent = emails.drafts.length;
   dc.style.display = emails.drafts.length > 0 ? "inline-block" : "none";
 
-  const nb = document.getElementById("notifBadge");
-  nb.textContent = notifications.length;
-  nb.style.display = notifications.length > 0 ? "inline" : "none";
+  // Update both desktop and mobile badge
+  ["notifBadge", "notifBadgeMobile"].forEach(id => {
+    const nb = document.getElementById(id);
+    if (nb) {
+      nb.textContent = notifications.length;
+      nb.style.display = notifications.length > 0 ? "inline" : "none";
+    }
+  });
 }
 
 // ============================================================
@@ -930,7 +939,7 @@ function showHelpCenter() {
     <h3>Search</h3>
     <p>The search bar searches <strong>all folders</strong> — inbox, sent, drafts and trash — at once.</p>
     <h3>Attachments</h3>
-    <p>Click <i class="fa fa-paperclip"></i> in the compose window to attach files. Max 5 MB per file, 25 MB total.</p>
+    <p>Click the paperclip in the compose window to attach files. Max 5 MB per file, 25 MB total.</p>
     <h3>Keyboard Shortcuts</h3>
     <ul>
       <li><i class="fa fa-keyboard"></i> <kbd>N</kbd> — New compose</li>
@@ -940,7 +949,7 @@ function showHelpCenter() {
     <h3>Drafts</h3>
     <p>Drafts auto-save every 30 seconds. Click a draft to resume editing.</p>
     <h3>Trash & Restore</h3>
-    <p>Deleted emails go to Trash. Use the <i class="fa fa-undo"></i> restore button to recover them.</p>
+    <p>Deleted emails go to Trash. Use the restore button to recover them.</p>
   `);
 }
 
@@ -971,7 +980,7 @@ function showTerms() {
 function showFAQ() {
   openModal("FAQ", `
     <div class="faq-item"><h3>How do I send an email?</h3><p>Click <strong>Compose</strong>, fill in the fields, click <strong>Send</strong> or press <kbd>Ctrl+Enter</kbd>.</p></div>
-    <div class="faq-item"><h3>Can I attach files?</h3><p>Yes — click <i class="fa fa-paperclip"></i> in compose. Max 5 MB/file, 25 MB total.</p></div>
+    <div class="faq-item"><h3>Can I attach files?</h3><p>Yes — click the paperclip in compose. Max 5 MB/file, 25 MB total.</p></div>
     <div class="faq-item"><h3>How do I save a draft?</h3><p>Click <strong>Save Draft</strong>. Drafts also auto-save every 30 seconds.</p></div>
     <div class="faq-item"><h3>Where do deleted emails go?</h3><p>To <strong>Trash</strong>. Restore them with the ↩ icon, or empty trash to permanently delete.</p></div>
     <div class="faq-item"><h3>Does search work across all folders?</h3><p>Yes — the search bar searches inbox, sent, drafts and trash simultaneously.</p></div>
