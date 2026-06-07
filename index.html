@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MailSoft – Email Client</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- EmailJS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+</head>
+<body>
+
+  <!-- ========== SIDEBAR ========== -->
+  <div class="sidebar">
+    <div class="logo">
+      <i class="fa fa-envelope-open-text"></i>
+      <span>MailSoft</span>
+    </div>
+    <ul id="sidebarNav">
+      <li class="active" data-folder="inbox" onclick="switchFolder('inbox')">
+        <i class="fa fa-inbox"></i> Inbox <span class="count" id="inboxCount" style="display:none">0</span>
+      </li>
+      <li data-folder="sent" onclick="switchFolder('sent')">
+        <i class="fa fa-paper-plane"></i> Sent
+      </li>
+      <li data-folder="drafts" onclick="switchFolder('drafts')">
+        <i class="fa fa-file-alt"></i> Drafts
+        <span class="count draft-count" id="draftCount" style="display:none">0</span>
+      </li>
+      <li data-folder="starred" onclick="switchFolder('starred')">
+        <i class="fa fa-star"></i> Starred
+      </li>
+      <li data-folder="trash" onclick="switchFolder('trash')">
+        <i class="fa fa-trash"></i> Trash
+      </li>
+    </ul>
+    <button class="compose-btn" onclick="openCompose()">
+      <i class="fa fa-pen"></i> Compose
+    </button>
+    <div class="theme-row">
+      <span class="theme-label"><i class="fa fa-moon"></i></span>
+      <label class="theme-switch">
+        <input type="checkbox" id="themeCheckbox" onchange="toggleTheme()" />
+        <span class="slider"></span>
+      </label>
+      <span class="theme-label"><i class="fa fa-sun"></i></span>
+    </div>
+  </div>
+
+  <!-- ========== MAIN CONTENT ========== -->
+  <div class="main-content">
+
+    <!-- NAVBAR -->
+    <div class="navbar">
+      <div class="search-box">
+        <i class="fa fa-search"></i>
+        <input type="text" id="searchInput" placeholder="Search all mail..." oninput="searchMail()" autocomplete="off" />
+        <span class="search-hint">all folders</span>
+      </div>
+      <div class="nav-icons">
+        <div class="notification" id="notifBell" onclick="toggleNotifPanel()">
+          <i class="fa fa-bell"></i>
+          <span class="badge" id="notifBadge" style="display:none">0</span>
+        </div>
+        <div class="profile" onclick="toggleProfileMenu()">
+          <div class="avatar">A</div>
+          <span class="username">Arpna</span>
+          <i class="fa fa-chevron-down" style="font-size:11px;color:var(--text-muted)"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTIFICATION PANEL (fixed position, not absolute) -->
+    <div class="notif-panel" id="notifPanel">
+      <div class="notif-header">
+        <span><i class="fa fa-bell"></i> Notifications</span>
+        <button onclick="clearNotifs()">Clear all</button>
+      </div>
+      <div id="notifList"><div class="notif-empty">No new notifications</div></div>
+    </div>
+
+    <!-- PROFILE MENU (fixed position) -->
+    <div class="profile-menu" id="profileMenu">
+      <div class="profile-info">
+        <div class="avatar lg">A</div>
+        <div>
+          <div class="pm-name">Arpna</div>
+          <div class="pm-email">arpna@mailsoft.com</div>
+        </div>
+      </div>
+      <hr/>
+      <div class="pm-item" onclick="showProfile()"><i class="fa fa-user"></i> My Profile</div>
+      <div class="pm-item" onclick="showSettings()"><i class="fa fa-cog"></i> Settings</div>
+      <div class="pm-item danger" onclick="signOut()"><i class="fa fa-sign-out-alt"></i> Sign Out</div>
+    </div>
+
+    <!-- HERO -->
+    <div class="hero" id="heroSection">
+      <div class="hero-text">
+        <h1>Send Email<br /><span>Easily.</span></h1>
+        <p>Modern Email Client — fast, secure, and beautifully organized.</p>
+        <div class="hero-btns">
+          <button onclick="openCompose()"><i class="fa fa-paper-plane"></i> Compose New</button>
+          <button class="btn-outline" onclick="switchFolder('inbox')"><i class="fa fa-inbox"></i> Open Inbox</button>
+        </div>
+      </div>
+      <div class="hero-image">
+        <img src="https://media.geeksforgeeks.org/wp-content/uploads/20211101181325/EmailClient.JPG" alt="Email Client" />
+      </div>
+    </div>
+
+    <!-- FOLDER HEADER -->
+    <div class="folder-header">
+      <h3 id="folderTitle"><i class="fa fa-inbox"></i> Inbox</h3>
+      <div class="folder-actions">
+        <button class="action-btn" onclick="markAllRead()"><i class="fa fa-check-double"></i> Mark all read</button>
+        <button class="action-btn danger-btn" onclick="deleteSelected()"><i class="fa fa-trash"></i> Delete selected</button>
+        <button class="action-btn danger-btn" id="emptyTrashBtn" onclick="emptyTrash()" style="display:none">
+          <i class="fa fa-trash-alt"></i> Empty Trash
+        </button>
+      </div>
+    </div>
+
+    <!-- EMAIL LIST -->
+    <div class="email" id="mailList"></div>
+
+    <!-- EMPTY STATE -->
+    <div class="empty-state" id="emptyState" style="display:none">
+      <i class="fa fa-inbox"></i><p>No emails here</p>
+    </div>
+
+    <!-- EMAIL DETAIL VIEW -->
+    <div class="email-detail" id="emailDetail" style="display:none">
+      <button class="back-btn" onclick="closeDetail()"><i class="fa fa-arrow-left"></i> Back</button>
+      <div class="detail-header">
+        <h2 id="detailSubject"></h2>
+        <div class="detail-meta">
+          <span id="detailSender"></span>
+          <span id="detailTime"></span>
+        </div>
+        <div class="detail-actions">
+          <button onclick="replyEmail()"><i class="fa fa-reply"></i> Reply</button>
+          <button onclick="forwardEmail()"><i class="fa fa-share"></i> Forward</button>
+          <button id="restoreBtn" onclick="restoreEmail()" style="display:none"><i class="fa fa-undo"></i> Restore</button>
+          <button class="danger-action" onclick="deleteCurrentEmail()"><i class="fa fa-trash"></i> Delete</button>
+        </div>
+      </div>
+      <div class="detail-body" id="detailBody"></div>
+    </div>
+
+    <!-- INFO SECTION -->
+    <div class="info-section" id="infoSection">
+      <h2>What is E-mail Client Software?</h2>
+      <p>An e-mail client is an application that allows users to send, receive and manage email. It can be installed on a computer or mobile device and connects to email servers such as Gmail or Outlook. E-mail client software makes communication faster, organized and more professional.</p>
+      <h2>Key Capabilities</h2>
+      <ul>
+        <li><i class="fa fa-check"></i> Compose and send emails</li>
+        <li><i class="fa fa-check"></i> Receive new messages</li>
+        <li><i class="fa fa-check"></i> Organize email into folders</li>
+        <li><i class="fa fa-check"></i> Attach files and documents</li>
+        <li><i class="fa fa-check"></i> Manage multiple email accounts</li>
+      </ul>
+      <p>E-mail clients use protocols such as <strong>SMTP</strong> (for sending), <strong>POP3</strong> and <strong>IMAP</strong> (for receiving).</p>
+      <div class="two-col">
+        <div>
+          <h3>Types of E-mail Clients</h3>
+          <b>Desktop-based</b>
+          <ul>
+            <li><i class="fa fa-desktop"></i> Microsoft Outlook</li>
+            <li><i class="fa fa-desktop"></i> Mozilla Thunderbird</li>
+          </ul>
+          <b>Web-based</b>
+          <ul>
+            <li><i class="fa fa-globe"></i> Gmail</li>
+            <li><i class="fa fa-globe"></i> Yahoo Mail</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Features</h3>
+          <ul>
+            <li><i class="fa fa-check"></i> Send and receive e-mails</li>
+            <li><i class="fa fa-check"></i> Multiple account support</li>
+            <li><i class="fa fa-check"></i> Offline access</li>
+            <li><i class="fa fa-check"></i> Attachment support</li>
+            <li><i class="fa fa-check"></i> Spam filtering</li>
+            <li><i class="fa fa-check"></i> Email search</li>
+            <li><i class="fa fa-check"></i> Folder & label management</li>
+          </ul>
+        </div>
+      </div>
+      <div class="two-col">
+        <div>
+          <h3>Advantages</h3>
+          <ul class="adv">
+            <li><i class="fa fa-plus-circle"></i> Easy email management</li>
+            <li><i class="fa fa-plus-circle"></i> Works offline (Desktop clients)</li>
+            <li><i class="fa fa-plus-circle"></i> Professional communication</li>
+            <li><i class="fa fa-plus-circle"></i> Secure data storage</li>
+            <li><i class="fa fa-plus-circle"></i> Time-saving features</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Disadvantages</h3>
+          <ul class="disadv">
+            <li><i class="fa fa-minus-circle"></i> Requires setup and configuration</li>
+            <li><i class="fa fa-minus-circle"></i> Uses device storage space</li>
+            <li><i class="fa fa-minus-circle"></i> Risk of viruses from unknown attachments</li>
+          </ul>
+        </div>
+      </div>
+      <h2>How It Works</h2>
+      <div class="steps">
+        <div class="step"><span>1</span><p>User composes an email</p></div>
+        <div class="step-arrow"><i class="fa fa-arrow-right"></i></div>
+        <div class="step"><span>2</span><p>Sent via SMTP protocol</p></div>
+        <div class="step-arrow"><i class="fa fa-arrow-right"></i></div>
+        <div class="step"><span>3</span><p>Mail server delivers to receiver</p></div>
+        <div class="step-arrow"><i class="fa fa-arrow-right"></i></div>
+        <div class="step"><span>4</span><p>Receiver's client fetches via IMAP/POP3</p></div>
+      </div>
+      <div class="conclusion">
+        <h3>Conclusion</h3>
+        <p>Email client software plays an important role in modern communication. It helps individuals and organizations manage email efficiently and securely — widely used in offices, schools and businesses worldwide.</p>
+        <a href="https://www.google.com" target="_blank"><i class="fa fa-external-link-alt"></i> Learn More</a>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- ========== COMPOSE POPUP ========== -->
+  <div class="compose-popup" id="composePopup">
+    <div class="popup-box">
+      <div class="popup-header">
+        <h2><i class="fa fa-pen"></i> <span id="composeTitle">New Message</span></h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="icon-btn" onclick="saveDraft()" title="Save Draft"><i class="fa fa-save"></i></button>
+          <button class="close-btn" onclick="closeCompose()"><i class="fa fa-times"></i></button>
+        </div>
+      </div>
+      <input id="popupTo"      type="email" placeholder="To: email address *" />
+      <input id="popupCc"      type="email" placeholder="CC: (optional)" />
+      <input id="popupSubject" type="text"  placeholder="Subject *" />
+      <div class="toolbar">
+        <button onclick="formatText('bold')"      title="Bold"><i class="fa fa-bold"></i></button>
+        <button onclick="formatText('italic')"    title="Italic"><i class="fa fa-italic"></i></button>
+        <button onclick="formatText('underline')" title="Underline"><i class="fa fa-underline"></i></button>
+        <span class="toolbar-sep"></span>
+        <button onclick="insertTemplate('greeting')">👋 Greeting</button>
+        <button onclick="insertTemplate('closing')">✍️ Closing</button>
+        <span class="toolbar-sep"></span>
+        <button onclick="document.getElementById('popupAttachments').click()" title="Attach file">
+          <i class="fa fa-paperclip"></i> Attach
+        </button>
+      </div>
+      <input type="file" id="popupAttachments" multiple style="display:none" onchange="handleAttachments(event)" />
+      <div id="attachmentList" class="attachment-list"></div>
+      <div id="popupMessage" class="compose-editor" contenteditable="true" placeholder="Write your message here... *"></div>
+      <div class="popup-footer">
+        <div class="char-count"><span id="charCount">0</span> chars &nbsp;|&nbsp; <kbd>Ctrl+Enter</kbd> to send</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="saveDraft()"><i class="fa fa-save"></i> Draft</button>
+          <button class="btn-send" onclick="sendMailFromPopup()"><i class="fa fa-paper-plane"></i> Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== FOOTER ========== -->
+  <footer>
+    <div class="footer-container">
+      <div class="footer-about">
+        <h2><i class="fa fa-envelope-open-text"></i> MailSoft</h2>
+        <p>Send, receive and manage emails with our secure Email Client. Stay connected anytime, anywhere.</p>
+      </div>
+      <div class="footer-links">
+        <h3>Quick Links</h3>
+        <ul>
+          <li><a href="#" onclick="switchFolder('inbox');return false">Home</a></li>
+          <li><a href="#" onclick="switchFolder('inbox');return false">Inbox</a></li>
+          <li><a href="#" onclick="openCompose();return false">Compose Mail</a></li>
+          <li><a href="#" onclick="switchFolder('sent');return false">Sent</a></li>
+        </ul>
+      </div>
+      <div class="footer-links">
+        <h3>Company</h3>
+        <ul>
+          <li><a href="#" onclick="showAboutModal();return false">About Us</a></li>
+          <li><a href="#" onclick="showFeatures();return false">Features</a></li>
+          <li><a href="#" onclick="showContact();return false">Contact</a></li>
+          <li><a href="#" onclick="showFeedback();return false">Feedback</a></li>
+        </ul>
+      </div>
+      <div class="footer-links">
+        <h3>Support</h3>
+        <ul>
+          <li><a href="#" onclick="showHelpCenter();return false">Help Center</a></li>
+          <li><a href="#" onclick="showPrivacyPolicy();return false">Privacy Policy</a></li>
+          <li><a href="#" onclick="showTerms();return false">Terms &amp; Conditions</a></li>
+          <li><a href="#" onclick="showFAQ();return false">FAQ</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 Email Client Software. All Rights Reserved.</p>
+      <p>Made with <i class="fa fa-heart" style="color:#f87171"></i> by Arpna</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
